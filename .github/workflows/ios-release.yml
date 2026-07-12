@@ -1,0 +1,137 @@
+# ═══════════════════════════════════════════
+# INWEB-iOS · Release Workflow
+# ═══════════════════════════════════════════
+# Triggered by pushing a version tag (v*).
+# Since iOS .ipa builds require macOS runners (paid on GitHub Actions),
+# this release publishes:
+#   1. Source archive (zip + tar.gz)
+#   2. Build guide (README-BUILD.md)
+#   3. Instructions to compile locally on Mac
+#
+# For actual .ipa builds, see docs/BUILDING.md for options:
+#   - Xcode Cloud (free tier from Apple)
+#   - Local Mac build (developer.apple.com account required)
+#   - GitHub Actions macOS runners (~$0.08/min, unlock by paying)
+# ═══════════════════════════════════════════
+
+name: 🍎 iOS Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: 🚀 Publish GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 📊 Project stats
+        id: stats
+        run: |
+          count=$(find INWEB -name '*.swift' | wc -l)
+          lines=$(find INWEB -name '*.swift' -exec cat {} + | wc -l)
+          echo "swift_files=$count" >> $GITHUB_OUTPUT
+          echo "swift_lines=$lines" >> $GITHUB_OUTPUT
+          echo "  📊 Swift files: $count · Lines: $lines"
+
+      - name: 📦 Build source archives
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          BASENAME="INWEB-iOS-source-${TAG}"
+
+          # Zip archive (works on Windows/Mac/Linux)
+          zip -r "${BASENAME}.zip" . \
+            -x ".git/*" ".github/*" "*.DS_Store"
+
+          # Tar.gz for Unix folks
+          tar czf "${BASENAME}.tar.gz" \
+            --exclude='.git' --exclude='.github' --exclude='.DS_Store' \
+            .
+
+          ls -lh "${BASENAME}".*
+
+          echo ""
+          echo "═══════════════════════════════════════════"
+          echo "  📦 Archives ready:"
+          echo "═══════════════════════════════════════════"
+          for f in "${BASENAME}".*; do
+            echo "  • $f — $(du -h "$f" | cut -f1)"
+          done
+
+      - name: 📝 Write release notes
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          cat > release_notes.md << EOF
+          🎉 **INWEB iOS $TAG** — Native SwiftUI companion for [INWEB-Android](https://github.com/InayaTechLabs/INWEB-Android).
+
+          ## 📦 What is INWEB iOS?
+
+          A native iPhone/iPad app that remote-controls your INWEB Android web server
+          over the local network via REST API.
+
+          - 🖥 **Live dashboard** — CPU, RAM, storage, network stats (3s polling)
+          - 🌐 **Virtual host manager** — add/edit/delete sites remotely
+          - 🏠 **Custom DNS mappings** — hostname → IP editor
+          - 📜 **Log tail** — real-time access/error/php-fpm logs
+          - ⚙️ **Settings sync** — every toggle instantly applied on Android
+          - 🕌 **Prayer times strip** — offline astronomical calc
+          - 🔐 **Keychain auth** — Bearer token stored securely
+
+          ## 📊 Codebase
+
+          - **${{ steps.stats.outputs.swift_files }} Swift files**, ${{ steps.stats.outputs.swift_lines }} lines
+          - iOS 16+ target
+          - **Zero external dependencies** (pure Apple frameworks)
+          - SwiftUI · Foundation · Security · Combine
+          - MIT License
+
+          ## 🏗 How to build
+
+          ### Option 1: Xcode (Mac required)
+          1. Download the source archive below (zip or tar.gz)
+          2. Open Xcode → **File → New → Project** → iOS App
+             - Product Name: \`INWEB\`
+             - Interface: SwiftUI
+             - Language: Swift
+          3. Delete the auto-generated \`ContentView.swift\` and \`Assets\`
+          4. Drag the \`INWEB/\` folder from the archive into your Xcode project
+          5. Set **Deployment target** to iOS 16.0
+          6. Add \`Resources/Info.plist\` entries or merge into your Info.plist
+          7. Build & Run (⌘R)
+
+          ### Option 2: Xcode Cloud (Apple's free CI)
+          Once you have a working Xcode project + Apple Developer account,
+          set up Xcode Cloud for automatic builds and TestFlight distribution.
+
+          See [\`README-BUILD.md\`](https://github.com/InayaTechLabs/INWEB-iOS/blob/main/README-BUILD.md) for step-by-step instructions.
+
+          ## 🔗 Related
+
+          - 📱 [INWEB Android app](https://github.com/InayaTechLabs/INWEB-Android) (v1.0.0 released)
+          - 🌐 REST API endpoints documented in Android repo
+
+          Made with 💚 in Bangladesh.
+          EOF
+
+      - name: 🚀 Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG" \
+            --title "INWEB iOS $TAG" \
+            --notes-file release_notes.md \
+            INWEB-iOS-source-${TAG}.zip \
+            INWEB-iOS-source-${TAG}.tar.gz
