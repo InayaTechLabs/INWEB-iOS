@@ -34,6 +34,8 @@ jobs:
     # project file format (77). macos-14 with Xcode 15 fails.
     runs-on: macos-15
     timeout-minutes: 25
+    permissions:
+      contents: write  # needed for gh release upload / edit
 
     steps:
       - name: 📥 Checkout
