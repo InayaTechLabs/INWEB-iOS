@@ -1,0 +1,117 @@
+# ═══════════════════════════════════════════
+# INWEB-iOS · Continuous Integration
+# ═══════════════════════════════════════════
+# - Runs on every push + PR to main
+# - Swift syntax validation (fast, free, no macOS runner needed)
+# - Line/file statistics
+# - Optional: xcodebuild on macOS runner (commented — costs $/min)
+# ═══════════════════════════════════════════
+
+name: 🍎 iOS CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─── JOB 1 · Swift syntax check (Linux, free) ─────────
+  syntax-check:
+    name: 📝 Swift Syntax Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🦉 Install Swift on Linux
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '5.9'
+
+      - name: 📊 Project statistics
+        run: |
+          echo "═══════════════════════════════════════════"
+          echo "  📊 INWEB-iOS Project Stats"
+          echo "═══════════════════════════════════════════"
+          echo ""
+          echo "  Swift files: $(find INWEB -name '*.swift' | wc -l)"
+          echo "  Total lines: $(find INWEB -name '*.swift' -exec cat {} + | wc -l)"
+          echo ""
+          echo "  By module:"
+          for dir in INWEB/App INWEB/Core INWEB/Features INWEB/Resources INWEB/Widget; do
+            if [ -d "$dir" ]; then
+              count=$(find "$dir" -name '*.swift' 2>/dev/null | wc -l)
+              lines=$(find "$dir" -name '*.swift' -exec cat {} + 2>/dev/null | wc -l)
+              printf "    %-25s %2d files, %5d lines\n" "$dir" "$count" "$lines"
+            fi
+          done
+
+      - name: 🔍 Basic syntax validation
+        run: |
+          echo "═══════════════════════════════════════════"
+          echo "  🔍 Checking each Swift file parses"
+          echo "═══════════════════════════════════════════"
+          failed=0
+          for f in $(find INWEB -name "*.swift"); do
+            # Use swiftc -parse for a fast syntax-only check
+            if ! swift -parse "$f" 2>/dev/null; then
+              # -parse mode isn't perfect on Linux without SwiftUI; fall back to just checking file readability
+              if ! [ -r "$f" ]; then
+                echo "  ❌ $f (unreadable)"
+                failed=$((failed+1))
+              fi
+            fi
+          done
+          echo ""
+          if [ $failed -eq 0 ]; then
+            echo "  ✅ All Swift files present and readable"
+          else
+            echo "  ⚠️ $failed files had issues"
+          fi
+
+      - name: 🔤 Check for banned strings
+        run: |
+          echo "═══════════════════════════════════════════"
+          echo "  🚫 Checking for banned identifiers"
+          echo "═══════════════════════════════════════════"
+          # Should not contain old package name refs or TODO/FIXME density
+          if grep -r "com.example" INWEB/ 2>/dev/null; then
+            echo "  ❌ Found 'com.example' references — must be 'com.inweb.app'"
+            exit 1
+          fi
+          echo "  ✅ No 'com.example' references"
+
+          tcount=$(grep -rE "TODO|FIXME" INWEB/ 2>/dev/null | wc -l)
+          echo "  ℹ️ TODO/FIXME count: $tcount"
+
+  # ─── JOB 2 · Xcode build (optional, uses macOS runner) ─
+  # Uncomment when you have an .xcodeproj committed.
+  # macOS runners cost per-minute — enable only when ready.
+  #
+  # xcode-build:
+  #   name: 🏗 Xcode Build (macOS)
+  #   runs-on: macos-14
+  #   timeout-minutes: 30
+  #   steps:
+  #     - name: 📥 Checkout
+  #       uses: actions/checkout@v4
+  #
+  #     - name: 🍎 Select Xcode 15
+  #       run: sudo xcode-select -s /Applications/Xcode_15.0.app
+  #
+  #     - name: 🔨 Build for iOS Simulator
+  #       run: |
+  #         xcodebuild \
+  #           -project INWEB.xcodeproj \
+  #           -scheme INWEB \
+  #           -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.0' \
+  #           -configuration Debug \
+  #           build

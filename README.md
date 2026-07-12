@@ -1,6 +1,11 @@
 # 🍎 INWEB for iOS
 
-Native SwiftUI companion app for the [INWEB Android server](../LocalServerApp).
+[![iOS CI](https://github.com/InayaTechLabs/INWEB-iOS/actions/workflows/ios-ci.yml/badge.svg)](https://github.com/InayaTechLabs/INWEB-iOS/actions/workflows/ios-ci.yml)
+![Platform](https://img.shields.io/badge/platform-iOS%2016%2B-000000?style=flat-square&logo=apple&logoColor=white)
+![Swift](https://img.shields.io/badge/swift-5.9-F05138?style=flat-square&logo=swift&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-14B8A6?style=flat-square)
+
+Native SwiftUI companion app for [**INWEB-Android**](https://github.com/InayaTechLabs/INWEB-Android).
 Lets you monitor and control your Android-hosted local web server from
 an iPhone or iPad on the same Wi-Fi.
 
