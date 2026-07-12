@@ -1,0 +1,169 @@
+# ═══════════════════════════════════════════
+# INWEB-iOS · Build unsigned IPA on macOS runner
+# ═══════════════════════════════════════════
+# Public repos get unlimited free macOS-runner minutes on GitHub Actions.
+# This workflow:
+#   1. Generates Xcode project via XcodeGen from project.yml
+#   2. Builds INWEB.app for iOS device (arm64, unsigned)
+#   3. Packages as .ipa (Payload/INWEB.app/*)
+#   4. Uploads as workflow artifact + attaches to Release (on tag)
+#
+# The resulting IPA is UNSIGNED — you'll need to sign it with a
+# free signing service (Sideloadly, Signulous, ESign, etc.) before
+# installing on your iPhone.
+# ═══════════════════════════════════════════
+
+name: 🏗 iOS IPA Build (macOS)
+
+on:
+  push:
+    branches: [ main ]
+    tags:     [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ipa:
+    name: 🍎 Build unsigned IPA
+    runs-on: macos-14
+    timeout-minutes: 25
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🍎 Select Xcode 15
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app || \
+          sudo xcode-select -s /Applications/Xcode_15.3.app || \
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: 🧰 Install XcodeGen
+        run: brew install xcodegen
+
+      - name: 🏗 Generate Xcode project
+        run: |
+          xcodegen generate
+          echo "✅ Project generated:"
+          ls -la INWEB.xcodeproj/ | head -10
+
+      - name: 🔨 Build .app for iOS device (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project INWEB.xcodeproj \
+            -scheme INWEB \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath ./DerivedData \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build \
+            | xcbeautify --renderer github-actions || true
+
+          # xcbeautify may not exist — retry without pipe if failed
+          if [ ! -d "DerivedData/Build/Products/Release-iphoneos/INWEB.app" ]; then
+            xcodebuild \
+              -project INWEB.xcodeproj \
+              -scheme INWEB \
+              -configuration Release \
+              -destination "generic/platform=iOS" \
+              -derivedDataPath ./DerivedData \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              build
+          fi
+
+      - name: 📦 Package as unsigned .ipa
+        run: |
+          APP_PATH="DerivedData/Build/Products/Release-iphoneos/INWEB.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "❌ INWEB.app not found at $APP_PATH"
+            find DerivedData -name "INWEB.app" -type d
+            exit 1
+          fi
+
+          echo "═══════════════════════════════════════════"
+          echo "  📦 Packaging IPA"
+          echo "═══════════════════════════════════════════"
+          echo "  App size: $(du -sh "$APP_PATH" | cut -f1)"
+
+          # Create IPA (which is just a zip with specific structure)
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -qry INWEB-unsigned.ipa Payload
+          rm -rf Payload
+
+          echo ""
+          echo "  ✅ INWEB-unsigned.ipa created:"
+          ls -lh INWEB-unsigned.ipa
+
+      - name: 📤 Upload IPA as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: INWEB-unsigned-ipa-${{ github.sha }}
+          path: INWEB-unsigned.ipa
+          retention-days: 30
+          if-no-files-found: error
+
+      # ─── Release job for tag pushes ─────────────────────
+      - name: 📝 Prepare release notes (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          cat > release_notes_ipa.md << EOF
+          🍎 **INWEB iOS $TAG — Unsigned IPA**
+
+          Download the \`INWEB-unsigned.ipa\` from the assets below.
+
+          ## 📱 How to install on iPhone (no PC needed)
+
+          Since this IPA is unsigned, you need to sign it before iOS will let you install it. Options:
+
+          ### Option 1: Online signing service (Safari-only, no PC)
+          - Go to [Signulous](https://signulous.com), [ESign](https://esign.yyyue.xyz), or [AppDB](https://appdb.to)
+          - Provide the download URL of \`INWEB-unsigned.ipa\` (link below)
+          - Follow their prompts to sign with your Apple ID
+          - Install directly from Safari
+
+          ### Option 2: Sideloadly (Windows/Mac PC required)
+          - Download [Sideloadly](https://sideloadly.io) on your PC
+          - Connect iPhone via USB
+          - Drag \`INWEB-unsigned.ipa\` into Sideloadly
+          - Enter your free Apple ID → wait 30 seconds → done
+
+          ### Option 3: TrollStore (only iOS ≤ 17.0)
+          - Not compatible with iOS 26.x
+
+          ## ⚠️ Compatibility
+          - iOS **16.0 or newer** required
+          - Both iPhone + iPad supported
+
+          ## 🔗 About this app
+          Native SwiftUI companion for [INWEB-Android](https://github.com/InayaTechLabs/INWEB-Android).
+          Remote-controls your Android web server (Nginx, PHP, MariaDB) from iPhone/iPad.
+
+          Made with 💚 in Bangladesh.
+          EOF
+
+      - name: 🚀 Attach IPA to GitHub Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Rename with tag for clarity
+          cp INWEB-unsigned.ipa "INWEB-iOS-${TAG}-unsigned.ipa"
+          # Upload to existing release (created by ios-release.yml)
+          gh release upload "$TAG" "INWEB-iOS-${TAG}-unsigned.ipa" --clobber
+
+          # Append IPA install notes to release
+          gh release edit "$TAG" --notes-file release_notes_ipa.md --append || true
