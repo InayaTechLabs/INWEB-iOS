@@ -51,16 +51,17 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           BASENAME="INWEB-iOS-source-${TAG}"
 
-          # Zip archive (works on Windows/Mac/Linux)
-          zip -r "${BASENAME}.zip" . \
+          # Write archives to /tmp so they don't self-include mid-creation
+          # (tar refuses when the archive file grows inside the tarball).
+          zip -r "/tmp/${BASENAME}.zip" . \
             -x ".git/*" ".github/*" "*.DS_Store"
 
-          # Tar.gz for Unix folks
-          tar czf "${BASENAME}.tar.gz" \
+          tar czf "/tmp/${BASENAME}.tar.gz" \
             --exclude='.git' --exclude='.github' --exclude='.DS_Store' \
             .
 
-          ls -lh "${BASENAME}".*
+          # Move back to workspace so subsequent steps can find them
+          mv "/tmp/${BASENAME}.zip" "/tmp/${BASENAME}.tar.gz" .
 
           echo ""
           echo "═══════════════════════════════════════════"
