@@ -58,7 +58,8 @@ jobs:
 
       - name: 🔨 Build .app for iOS device (unsigned)
         run: |
-          set -o pipefail
+          # Direct xcodebuild — no xcbeautify (swallows real errors).
+          # -quiet is intentionally NOT used so we see full output.
           xcodebuild \
             -project INWEB.xcodeproj \
             -scheme INWEB \
@@ -68,21 +69,13 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build \
-            | xcbeautify --renderer github-actions || true
-
-          # xcbeautify may not exist — retry without pipe if failed
+            ONLY_ACTIVE_ARCH=NO \
+            build 2>&1 | tail -400
+          # Verify the .app was produced
           if [ ! -d "DerivedData/Build/Products/Release-iphoneos/INWEB.app" ]; then
-            xcodebuild \
-              -project INWEB.xcodeproj \
-              -scheme INWEB \
-              -configuration Release \
-              -destination "generic/platform=iOS" \
-              -derivedDataPath ./DerivedData \
-              CODE_SIGN_IDENTITY="" \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGNING_ALLOWED=NO \
-              build
+            echo "❌ INWEB.app not produced"
+            find DerivedData -name "INWEB.app" -type d 2>/dev/null || true
+            exit 1
           fi
 
       - name: 📦 Package as unsigned .ipa
