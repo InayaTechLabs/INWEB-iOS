@@ -18,6 +18,9 @@ options:
     iOS: "16.0"
   createIntermediateGroups: true
   developmentLanguage: en
+  # Force older-compatible project file format (XcodeGen defaults to 77 which
+  # requires Xcode 16+; we set 56 for broader compatibility with Xcode 15+).
+  xcodeVersion: "16.0"
 
 settings:
   base:
