@@ -1,0 +1,45 @@
+# ═══════════════════════════════════════════
+# INWEB-iOS · .gitignore
+# ═══════════════════════════════════════════
+
+# ─── Xcode ────────────────────────────────
+.DS_Store
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+DerivedData/
+build/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# ─── Swift Package Manager ───────────────
+.build/
+.swiftpm/
+Package.resolved
+
+# ─── CocoaPods (if used later) ───────────
+Pods/
+*.xcworkspace
+
+# ─── Carthage ─────────────────────────────
+Carthage/Build/
+
+# ─── Fastlane ─────────────────────────────
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output
+
+# ─── Signing / secrets ────────────────────
+*.p12
+*.mobileprovision
+*.cer
+AuthKey_*.p8
+ExportOptions.plist
+
+# ─── Editor / OS cruft ────────────────────
+*.swp
+.vscode/
+Thumbs.db
