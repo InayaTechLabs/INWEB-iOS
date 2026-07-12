@@ -1,10 +1,11 @@
 # ═══════════════════════════════════════════
 # INWEB-iOS · Continuous Integration
 # ═══════════════════════════════════════════
-# - Runs on every push + PR to main
-# - Swift syntax validation (fast, free, no macOS runner needed)
-# - Line/file statistics
-# - Optional: xcodebuild on macOS runner (commented — costs $/min)
+# Lightweight checks on Ubuntu (free tier). No macOS runner cost.
+# - Project statistics
+# - File presence checks
+# - Banned-identifier scan
+# - Balanced-brace check (catches obvious Swift syntax errors)
 # ═══════════════════════════════════════════
 
 name: 🍎 iOS CI
@@ -21,20 +22,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ─── JOB 1 · Swift syntax check (Linux, free) ─────────
-  syntax-check:
-    name: 📝 Swift Syntax Check
+  # ─── JOB 1 · Static checks (Ubuntu, free) ─────────────
+  checks:
+    name: 📝 Static Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
 
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-
-      - name: 🦉 Install Swift on Linux
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '5.9'
 
       - name: 📊 Project statistics
         run: |
@@ -42,8 +38,10 @@ jobs:
           echo "  📊 INWEB-iOS Project Stats"
           echo "═══════════════════════════════════════════"
           echo ""
-          echo "  Swift files: $(find INWEB -name '*.swift' | wc -l)"
-          echo "  Total lines: $(find INWEB -name '*.swift' -exec cat {} + | wc -l)"
+          swift_count=$(find INWEB -name '*.swift' 2>/dev/null | wc -l)
+          swift_lines=$(find INWEB -name '*.swift' -exec cat {} + 2>/dev/null | wc -l)
+          echo "  Swift files: $swift_count"
+          echo "  Total lines: $swift_lines"
           echo ""
           echo "  By module:"
           for dir in INWEB/App INWEB/Core INWEB/Features INWEB/Resources INWEB/Widget; do
@@ -54,64 +52,68 @@ jobs:
             fi
           done
 
-      - name: 🔍 Basic syntax validation
-        run: |
-          echo "═══════════════════════════════════════════"
-          echo "  🔍 Checking each Swift file parses"
-          echo "═══════════════════════════════════════════"
-          failed=0
-          for f in $(find INWEB -name "*.swift"); do
-            # Use swiftc -parse for a fast syntax-only check
-            if ! swift -parse "$f" 2>/dev/null; then
-              # -parse mode isn't perfect on Linux without SwiftUI; fall back to just checking file readability
-              if ! [ -r "$f" ]; then
-                echo "  ❌ $f (unreadable)"
-                failed=$((failed+1))
-              fi
-            fi
-          done
-          echo ""
-          if [ $failed -eq 0 ]; then
-            echo "  ✅ All Swift files present and readable"
-          else
-            echo "  ⚠️ $failed files had issues"
-          fi
-
-      - name: 🔤 Check for banned strings
+      - name: 🔤 Banned identifier scan
         run: |
           echo "═══════════════════════════════════════════"
           echo "  🚫 Checking for banned identifiers"
           echo "═══════════════════════════════════════════"
-          # Should not contain old package name refs or TODO/FIXME density
-          if grep -r "com.example" INWEB/ 2>/dev/null; then
+          if grep -rn "com\.example" INWEB/ 2>/dev/null; then
             echo "  ❌ Found 'com.example' references — must be 'com.inweb.app'"
             exit 1
           fi
           echo "  ✅ No 'com.example' references"
 
-          tcount=$(grep -rE "TODO|FIXME" INWEB/ 2>/dev/null | wc -l)
-          echo "  ℹ️ TODO/FIXME count: $tcount"
+          if grep -rn "LocalServerApp\|localserver" INWEB/ 2>/dev/null; then
+            echo "  ❌ Found old 'LocalServerApp' references"
+            exit 1
+          fi
+          echo "  ✅ No old naming references"
 
-  # ─── JOB 2 · Xcode build (optional, uses macOS runner) ─
-  # Uncomment when you have an .xcodeproj committed.
-  # macOS runners cost per-minute — enable only when ready.
-  #
-  # xcode-build:
-  #   name: 🏗 Xcode Build (macOS)
-  #   runs-on: macos-14
-  #   timeout-minutes: 30
-  #   steps:
-  #     - name: 📥 Checkout
-  #       uses: actions/checkout@v4
-  #
-  #     - name: 🍎 Select Xcode 15
-  #       run: sudo xcode-select -s /Applications/Xcode_15.0.app
-  #
-  #     - name: 🔨 Build for iOS Simulator
-  #       run: |
-  #         xcodebuild \
-  #           -project INWEB.xcodeproj \
-  #           -scheme INWEB \
-  #           -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.0' \
-  #           -configuration Debug \
-  #           build
+          tcount=$(grep -rE "TODO|FIXME|XXX" INWEB/ 2>/dev/null | wc -l)
+          echo "  ℹ️ TODO/FIXME/XXX count: $tcount"
+
+      - name: ⚖️  Balanced brace/paren check
+        run: |
+          echo "═══════════════════════════════════════════"
+          echo "  ⚖️  Checking balanced braces in Swift files"
+          echo "═══════════════════════════════════════════"
+          failed=0
+          for f in $(find INWEB -name '*.swift'); do
+            open=$(grep -o '{' "$f" | wc -l)
+            close=$(grep -o '}' "$f" | wc -l)
+            if [ "$open" != "$close" ]; then
+              echo "  ❌ $f : { ($open) vs } ($close)"
+              failed=$((failed+1))
+            fi
+          done
+          if [ $failed -eq 0 ]; then
+            echo "  ✅ All Swift files have balanced braces"
+          else
+            echo "  ⚠️ $failed files with unbalanced braces"
+            exit 1
+          fi
+
+      - name: 📄 Required files check
+        run: |
+          echo "═══════════════════════════════════════════"
+          echo "  📄 Verifying required project files"
+          echo "═══════════════════════════════════════════"
+          required=(
+            "INWEB/App/INWEBApp.swift"
+            "INWEB/App/INWEBTheme.swift"
+            "INWEB/Core/API/INWEBApi.swift"
+            "INWEB/Core/Storage/Session.swift"
+            "INWEB/Resources/Info.plist"
+            "README.md"
+            "LICENSE"
+          )
+          failed=0
+          for f in "${required[@]}"; do
+            if [ -f "$f" ]; then
+              echo "  ✅ $f"
+            else
+              echo "  ❌ MISSING: $f"
+              failed=$((failed+1))
+            fi
+          done
+          [ $failed -eq 0 ] || exit 1
