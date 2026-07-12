@@ -24,7 +24,7 @@ struct PrayerStripView: View {
                     Text("NEXT · \(next?.label ?? "…")")
                         .font(.caption2).kerning(1)
                         .foregroundColor(INWEBTheme.textSecondary)
-                    Text(next.map(timeFormatter.string(from:)) ?? "—")
+                    Text(next.map { timeFormatter.string(from: $0.when) } ?? "—")
                         .font(.title3.bold())
                         .foregroundColor(INWEBTheme.accent)
                 }

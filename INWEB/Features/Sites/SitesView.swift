@@ -114,16 +114,16 @@ struct SitesView: View {
 
     private func load() async {
         do   { sites = try await session.api.vhosts().vhosts }
-        catch { error = (error as? INWEBApi.APIError)?.errorDescription }
+        catch let err { error = (err as? INWEBApi.APIError)?.errorDescription ?? err.localizedDescription }
     }
 
     private func save(_ payload: VHostPayload) async {
         do { try await session.api.upsertVhost(payload); await load() }
-        catch { error = (error as? INWEBApi.APIError)?.errorDescription }
+        catch let err { error = (err as? INWEBApi.APIError)?.errorDescription ?? err.localizedDescription }
     }
 
     private func delete(_ vh: Vhost) async {
         do { try await session.api.deleteVhost(id: vh.id); await load() }
-        catch { error = (error as? INWEBApi.APIError)?.errorDescription }
+        catch let err { error = (err as? INWEBApi.APIError)?.errorDescription ?? err.localizedDescription }
     }
 }
